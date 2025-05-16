@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "outDir": "./dist/",
+        "target": "ES2021",
+        "allowSyntheticDefaultImports": true,
+        "module": "NodeNext", // Doit correspondre à "moduleResolution"
+        "moduleResolution": "NodeNext",
+    },
+    "include": [
+      "src/**/*" // Inclut tous les fichiers dans le répertoire src et ses sous-répertoires
+    ],
+    "exclude": [
+      "node_modules", // Exclut le répertoire node_modules
+      "**/*.test.ts",  // Exclut les fichiers de test, par exemple
+      "src/test.ts",
+      "src/utils.ts",
+      // "src/db/dbMySQL.ts"
+    ]
+}
