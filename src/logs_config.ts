@@ -7,14 +7,15 @@ import { fileURLToPath } from 'url';
 
 // FCallback pour calculer la prochaine date de rotation
 function getNextRotationDate(currentDate) {
-    const nextDate = new Date(currentDate);
-    nextDate.setMonth(nextDate.getMonth() + 1); // Ajoute un mois
-    return nextDate;
-  }
+  const nextDate = new Date(currentDate);
+  nextDate.setMonth(nextDate.getMonth() + 1); // Ajoute un mois
+  return nextDate;
+}
 
 
 // Spécifiez le répertoire des fichiers de journal
-// Utilisez __dirname pour obtenir le répertoire courant en CommonJS
+// const currentUrl = import.meta.url;
+// const currentDir = path.dirname(fileURLToPath(currentUrl));
 const currentDir = __dirname;
 const logDirectory = path.resolve(currentDir, '../logs');
 // const logDirectory = '../logs';
@@ -36,38 +37,57 @@ const logFilePath = path.join(logDirectory, logFile);
 
 // Vérifie si le fichier de journal existe, sinon le créer
 if (!fs.existsSync(logFilePath)) {
-    try {
-      // Crée le fichier de journal s'il n'existe pas
-      fs.writeFileSync(logFilePath, '');
-    } catch (error) {
-      console.error('Erreur lors de la création du fichier de journal :', error);
-      process.exit(1); // Arrêter le processus en cas d'erreur
-    }
+  try {
+    // Crée le fichier de journal s'il n'existe pas
+    fs.writeFileSync(logFilePath, '');
+  } catch (error) {
+    console.error('Erreur lors de la création du fichier de journal :', error);
+    process.exit(1); // Arrêter le processus en cas d'erreur
   }
+}
 
 // Créez un flux de rotation des journaux
 const logStream = logrotateStream({
-    file: logFilePath,
-    size: '10M', // Taille maximale du fichier de journal avant rotation
-    rotate: getNextRotationDate, // Fonction de rappel pour la rotation mensuelle
-    // keep: 12, // Nombre de fichiers de journal à conserver (pour un mois)
-    compress: true // Compression des fichiers de journal archivés
-  });
+  file: logFilePath,
+  size: '10M', // Taille maximale du fichier de journal avant rotation
+  rotate: getNextRotationDate, // Fonction de rappel pour la rotation mensuelle
+  // keep: 12, // Nombre de fichiers de journal à conserver (pour un mois)
+  compress: true // Compression des fichiers de journal archivés
+});
 
 
-const logger = pino.default({
-    level: 'debug', // level: niveau de log minimal
-    // level: 'info', 
-  }, logStream);
-
-  const flushAndExit = (code) => {
-    logStream.flushSync(); 
-    process.exit(code);
+const logger = pino({
+  level: 'debug', // level: niveau de log minimal
+  timestamp: () => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const formattedTime = formatter.format(now).replace(',', ''); // Supprime la virgule
+    return `,"time":"${formattedTime}"`;
   }
+  // timestamp: () => {
+  //   const now = new Date();
+  //   const formattedTime = now.toISOString().replace('T', ' ').slice(0, 19); // Format YYYY-MM-DD HH:mm:ss
+  //   return `,"time":"${formattedTime}"`;
+  // }
+  // timestamp: () => `,"time":"${new Date().toISOString()}"` // Format ISO 8601
+}, logStream);
+
+const flushAndExit = (code) => {
+  logStream.flushSync();
+  process.exit(code);
+}
 
 
-  
+
 // Exporter les instances de stream et logger
-export { logStream , logger , flushAndExit };
+export { logStream, logger, flushAndExit };
 
 

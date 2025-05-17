@@ -15,9 +15,13 @@ import { fileURLToPath } from 'url';
 
 import dotenv from 'dotenv';
 
+// types ts personnalisé
+import type { SusarEuRow } from './types/susar_eu_row';
 
-const currentUrl = import.meta.url;
-const currentDir = path.dirname(fileURLToPath(currentUrl));
+
+
+// Use __dirname for CommonJS compatibility
+const currentDir = __dirname;
 const envPath = path.resolve(currentDir, '..', '.env');
 dotenv.config({ path: envPath });
 
@@ -52,13 +56,32 @@ const main = async (): Promise<void> => {
   const poolSusarEuV2 = await createPoolSusarEuV2();
   const connectionSusarEuV2 = await poolSusarEuV2.getConnection();
 
-  // const poolCodexExtract = await createPoolCodexExtract();
-  // const connectionCodexExtract = await poolCodexExtract.getConnection();
-  
-  // const poolSusarDataOdbc = await createPoolSusarEuV1_Odbc('DATA');
-  // const poolSusarArchiveOdbc = await createPoolSusarEuV1_Odbc('ARCHIVE');
-  // const connectionSusarDataOdbc = await poolSusarDataOdbc.connect();
-  
+    // const batchSize: number = 10;
+    const batchSize: number = Number(process.env.NB_SUSAR_A_TRAITER_PAR_LOT);
+    let offset: number = 0;
+    let hasMore: boolean = true;
+
+    while (hasMore) {
+        const query: string = `SELECT * 
+                                FROM susar_eu se 
+                                WHERE se.date_evaluation is null
+                                ORDER BY se.created_at 
+                                LIMIT ${batchSize} 
+                                OFFSET ${offset}`;
+        const [rows] = await connectionSusarEuV2.query<SusarEuRow[]>(query);
+        console.log(rows.length);
+        // process.exit(0);
+        if (rows.length === 0) {
+            hasMore = false;
+            break;
+        }
+
+        // Traiter le bloc de résultats ici
+        console.log(`Traitement du bloc de ${offset} à ${offset + rows.length}`);
+        // Ajoutez ici votre logique de traitement pour chaque bloc
+
+        offset += batchSize;
+    }
   // const evals = await donneEvalSubstance(poolSusarDataOdbc);
   // console.log(evals);
   // permet de couper la liste des codeVU à traiter en lots de NB_CODEVU_A_TRAITER_PAR_LOT
@@ -71,9 +94,6 @@ const main = async (): Promise<void> => {
   // pour attendre la fin de tous les traitements trtLotCodeVU
   // await Promise.all(promises_trtCodeVU);
 
-  // await closePoolCodexExtract(poolCodexExtract);
-  // await closePoolSusarEuV1_Odbc(poolSusarDataOdbc);
-  // await closePoolSusarEuV1_Odbc(poolSusarArchiveOdbc);
   
   await closePoolSusarEuV2(poolSusarEuV2);
 
