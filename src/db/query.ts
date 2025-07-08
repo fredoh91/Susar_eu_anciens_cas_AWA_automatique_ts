@@ -32,8 +32,13 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
                 continue; // on passe au susar suivant
             }
             // on fait une double boucle for of medicamentSuspect et PT
+            let TabIdSubstancePt: number[] = [];
             for (const medicament of medicamentSuspect) {
                 for (const effet of effetsIndesirables) {
+                    const idSubstancePt = await donneSubstancePt(connectionSusarEuV2, SusarEu.id, medicament, effet);
+                    if (idSubstancePt !== null) {
+                        TabIdSubstancePt.push(idSubstancePt);
+                    }
                     // pour chacun des couples, on regarde si il y a un enregistrement dans la table substance_pt
                     //      si oui, on recupère l'id de cette ligne substance_pt
                     //      si non, on crée la ligne et on recupère l'id de cette ligne substance_pt. 
@@ -41,7 +46,33 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
                     //              Normalement cela ne doit pas arriver
                 }
             }
+
+            // console.log('SusarEu.id', SusarEu.id);  //  ex. 4
+            // console.log(TabIdSubstancePt);     //  ex. [ 9, 10 ]
+            // process.exit(0);
+
+            const TabIdSubstancePt_eval_a_creer: number[] = await donneIdSubstancePtEval_a_creer(
+                                                                                        connectionSusarEuV2, 
+                                                                                        SusarEu.id, 
+                                                                                        TabIdSubstancePt);
+
+
+            console.log ('idSusarEu', SusarEu.id);
+            console.log('TabIdSubstancePt_eval_a_creer', TabIdSubstancePt_eval_a_creer);
+            console.log('tableau identique',estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer))
+
+
+
+            // si on a estCeTabIdentique a false c'est qu'il y a bien au moins une eval, mais que la date d'eval, n'est pas renseignée dans la table susar_eu, 
+            // il faut donc récupérer la date la plus ancienne dans la table substance_pt_eval_susar_eu et la mettre dans la table susar_eu.dateeval
+
+            // sinon il faut crée toutes les éval comme décrit plus bas
+
+
+            // process.exit(0);    
             //      on vérifie qu'il n'y a aucun substance_pt_eval pour tous les couples medicamentSuspect et PT
+            //      On parcours substance_pt_eval_susar_eu INNER JOIN substance_pt_eval 
+            //           Pour chaque substance_pt_eval, on vérifie si il y a une ligne dans substance_pt_eval_substance_pt
             //      si il y a des évaluations, on log et on ne traite pas ce susar
             //      si il n'y a pas d'évaluation : 
             //              on crée la ligne dans la table substance_pt_eval : 
@@ -173,8 +204,46 @@ async function createSubstancePtSusarEu(
     }
 }
 
+async function donneIdSubstancePtEval_a_creer(
+    connectionSusarEuV2: PoolConnection, 
+    idSusarEu: number, 
+    TabIdSubstancePt: number[]
+): Promise<number[]> {
+
+
+let TabIdSubstancePtEval: number[] = [];
+for (const idSubstancePt of TabIdSubstancePt) {
+    // const query: string = `SELECT * FROM substance_pt_eval WHERE substance_pt_id = ?`;
+    const query: string = `SELECT * 
+                            FROM substance_pt_eval_susar_eu s 
+                            INNER JOIN substance_pt_eval s2 ON s2.id = s.substance_pt_eval_id
+                            INNER JOIN substance_pt_eval_substance_pt s3 ON s3.substance_pt_eval_id = s2.id
+                            WHERE s.susar_eu_id = ?
+                            AND s3.substance_pt_id = ?;`;
+
+    const [rows] = await connectionSusarEuV2.query<SubstancePtEvalRow[]>(query, [idSusarEu,idSubstancePt]);
+
+    if (rows.length === 0) {
+        TabIdSubstancePtEval.push(idSubstancePt);
+    }
+}
+
+    return TabIdSubstancePtEval;
+}
+
+
+function estCeTabIdentique(TabIdSubstancePt: number[], TabIdSubstancePt_eval_a_creer: number[]): boolean {
+  if (TabIdSubstancePt.length !== TabIdSubstancePt_eval_a_creer.length) return false;
+  const sortedA = [...TabIdSubstancePt].sort((a, b) => a - b);
+  const sortedB = [...TabIdSubstancePt_eval_a_creer].sort((a, b) => a - b);
+  return sortedA.every((val, idx) => val === sortedB[idx]);
+}
+
+
 export {
     trtLotSusarEu,
     createSubstancePt,
+    donneIdSubstancePtEval_a_creer,
+    estCeTabIdentique,
 }
 //     logger.info('SWA automatique : Fin traitement');

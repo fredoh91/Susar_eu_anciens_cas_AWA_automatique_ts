@@ -15,7 +15,7 @@ describe('createSubstancePt - Integration Test', () => {
       const codeMeddraPt = 999999;
       const reactionMeddraPt = 'HEADACHE_TEST';
       
-      console.log('🔍 Avant INSERT - Vérification que la substance n\'existe pas...');
+      // console.log('🔍 Avant INSERT - Vérification que la substance n\'existe pas...');
       
       // Vérifier que la substance n'existe pas avant l'insert
       const [existingRows] = await connection.query(
@@ -23,10 +23,10 @@ describe('createSubstancePt - Integration Test', () => {
         [substanceName, codeMeddraPt]
       );
       
-      console.log(`📊 Substances existantes trouvées: ${(existingRows as any[]).length}`);
+      // console.log(`📊 Substances existantes trouvées: ${(existingRows as any[]).length}`);
       
       // Faire l'INSERT via notre fonction
-      console.log('🚀 Exécution de createSubstancePt...');
+      // console.log('🚀 Exécution de createSubstancePt...');
       const newId = await createSubstancePt(
         connection,
         substanceName,
@@ -34,23 +34,23 @@ describe('createSubstancePt - Integration Test', () => {
         reactionMeddraPt
       );
       
-      console.log(`✅ ID retourné par createSubstancePt: ${newId}`);
+      // console.log(`✅ ID retourné par createSubstancePt: ${newId}`);
       
       // Vérifier que l'INSERT a bien fonctionné
-      console.log('🔍 Vérification de l\'INSERT...');
+      // console.log('🔍 Vérification de l\'INSERT...');
       const [insertedRows] = await connection.query(
         'SELECT * FROM substance_pt WHERE id = ?',
         [newId]
       );
       
       const insertedRow = (insertedRows as any[])[0];
-      console.log('📋 Données insérées:', {
-        id: insertedRow?.id,
-        substance: insertedRow?.active_substance_high_level,
-        code: insertedRow?.codereactionmeddrapt,
-        reaction: insertedRow?.reactionmeddrapt,
-        created_at: insertedRow?.created_at
-      });
+      // console.log('📋 Données insérées:', {
+      //   id: insertedRow?.id,
+      //   substance: insertedRow?.active_substance_high_level,
+      //   code: insertedRow?.codereactionmeddrapt,
+      //   reaction: insertedRow?.reactionmeddrapt,
+      //   created_at: insertedRow?.created_at
+      // });
       
       // Assertions
       expect(newId).toBeTypeOf('number');
@@ -63,7 +63,7 @@ describe('createSubstancePt - Integration Test', () => {
       return { newId, insertedRow };
     });
     
-    console.log('🎉 Test terminé avec succès!');
-    console.log(`📝 Résumé: Substance créée avec l'ID ${result.newId}`);
+    // console.log('🎉 Test terminé avec succès!');
+    // console.log(`📝 Résumé: Substance créée avec l'ID ${result.newId}`);
   });
 }); 

@@ -13,9 +13,9 @@ if (!process.env.SUSAR_EU_V2_TEST_HOST) {
   process.env.SUSAR_EU_V2_TEST_PORT = '3306';
 }
 
-console.log('🧪 Configuration de test chargée:', {
-  host: process.env.SUSAR_EU_V2_TEST_HOST,
-  user: process.env.SUSAR_EU_V2_TEST_USER,
-  database: process.env.SUSAR_EU_V2_TEST_NAME,
-  port: process.env.SUSAR_EU_V2_TEST_PORT
-}); 
+// console.log('🧪 Configuration de test chargée:', {
+//   host: process.env.SUSAR_EU_V2_TEST_HOST,
+//   user: process.env.SUSAR_EU_V2_TEST_USER,
+//   database: process.env.SUSAR_EU_V2_TEST_NAME,
+//   port: process.env.SUSAR_EU_V2_TEST_PORT
+// }); 
