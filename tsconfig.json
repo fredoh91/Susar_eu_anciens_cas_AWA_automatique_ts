@@ -3,18 +3,21 @@
         "outDir": "./dist/",
         "target": "ES2021",
         "allowSyntheticDefaultImports": true,
-        "module": "NodeNext", // Doit correspondre à "moduleResolution"
+        "module": "NodeNext",
         "moduleResolution": "NodeNext",
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        // "allowImportingTsExtensions": true,
+        // "noEmit": true
     },
     "include": [
-      "src/**/*" // Inclut tous les fichiers dans le répertoire src et ses sous-répertoires
+      "src/**/*"
     ],
     "exclude": [
-      "node_modules", // Exclut le répertoire node_modules
-      "**/*.test.ts",  // Exclut les fichiers de test, par exemple
+      "node_modules",
+      "tests",
+      "**/*.test.ts",
       "src/test.ts",
-      "src/utils.ts",
-      // "src/db/dbMySQL.ts"
-    ],
-    "js/ts.implicitProjectConfig.module": "ESNext"
+      "src/utils.ts"
+    ]
 }

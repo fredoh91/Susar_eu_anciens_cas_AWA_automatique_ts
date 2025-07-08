@@ -22,10 +22,11 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // types ts personnalisé
-import type { SusarEuRow } from './types/susar_eu_row';
+import type { SusarEuRow } from './types/susar_eu_row.js';
 import type { PoolConnection, Pool } from 'mysql2/promise';
 
-const currentDir = __dirname;
+// const currentDir = __dirname;
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(currentDir, '..', '.env');
 dotenv.config({ path: envPath });
 
@@ -79,7 +80,9 @@ const main = async (): Promise<void> => {
             hasMore = false;
             break;
         }
+//  * Pour DEV : Pour éviter de traiter plus d'un lot à la fois
         hasMore = false; // pour DEV : Pour éviter de traiter plus d'un lot à la fois
+        
         // Traiter le bloc de résultats ici
         logger.info(`Traitement du bloc de ${offset} à ${offset + rows.length}`);
         // console.log(`Traitement du bloc de ${offset} à ${offset + rows.length}`);

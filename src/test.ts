@@ -2,7 +2,7 @@ import {
   logStream , 
   logger,
   flushAndExit
-} from './logs_config.ts'
+} from './logs_config.js'
 
 import {
   createPoolSusarEuV2,

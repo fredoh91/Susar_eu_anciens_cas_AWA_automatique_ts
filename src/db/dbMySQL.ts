@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 // const envPath = path.resolve(__dirname, '..', '.env');
-const currentDir = __dirname;
+// const currentDir = __dirname;
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(currentDir, '..', '.env');
 dotenv.config({ path: envPath });
 
