@@ -39,7 +39,7 @@ export async function runInTransaction<T>(
     
     // Exécuter le test
     const result = await testFunction(connection);
-    console.log('result', result);
+    // console.log('result', result);
     // Exemple d'utilisation du logger de test :
     testLogger.info({ result }, 'Résultat du test exécuté dans runInTransaction');
     // Rollback pour annuler les changements

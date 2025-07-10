@@ -1,7 +1,10 @@
 import { 
   logger,
 } from '../logs_config.js'
+import { config } from 'dotenv';
 
+// Charger les variables d'environnement
+config();
 
 import type { SusarEuRow } from '../types/susar_eu_row.js';
 import type { MedicamentsRow } from '../types/medicaments_row.js';
@@ -15,7 +18,7 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
     if (lstSusarEu.length !== 0) {
 
         for (const SusarEu of lstSusarEu) {
-            logger.info(`Traitement du cas : ${SusarEu.id}`);
+            // logger.info(`Traitement du cas : ${SusarEu.id}`);
             // TODO : Traiter le cas ici
             // await traiterCas(SusarEu);
 
@@ -35,6 +38,13 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
             let TabIdSubstancePt: number[] = [];
             for (const medicament of medicamentSuspect) {
                 for (const effet of effetsIndesirables) {
+                    if (!medicament.substancename || !effet.reaction_list_pt) {
+                        //medic.substancename, EI.codereactionmeddrapt, EI.reaction_list_pt
+                        // medicament ou effet sont null ou vide
+                        logger.error( `medicament ou EI est null ou vide pour l'idsusar ${SusarEu.id} (medic: ${medicament.substancename} et EI: ${effet.codereactionmeddrapt} - ${effet.reaction_list_pt})`);
+        
+                        continue;
+                    }
                     const idSubstancePt = await donneSubstancePt(connectionSusarEuV2, SusarEu.id, medicament, effet);
                     if (idSubstancePt !== null) {
                         TabIdSubstancePt.push(idSubstancePt);
@@ -56,12 +66,46 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
                                                                                         SusarEu.id, 
                                                                                         TabIdSubstancePt);
 
+            for (const idSubstancePt of TabIdSubstancePt_eval_a_creer) {
+                // on crée une ligne dans la table substance_pt_eval
+                const idSubstancePtEval = await createSubstancePtEval_et_TbLiaisons(connectionSusarEuV2, idSubstancePt, SusarEu.id);
+                // on crée une ligne dans substance_pt_eval_substance_pt
+                // const substancePtEvalSubstancePt = await createSubstancePtEvalSubstancePt(connectionSusarEuV2, idSubstancePtEval, idSubstancePt);
+                // // on crée une ligne dans substance_pt_eval_susar_eu
+                // const substancePtEvalSusarEu = await createSubstancePtEvalSusarEu(connectionSusarEuV2, idSubstancePtEval, SusarEu.id);
+                // on crée une ligne dans la table substance_pt_eval : 
+                //                          - assessment outcome : screened without action
+                //                          - comments : Screened without action automatic ()
+                //                          - date_eval : date d'aujourd'hui
+                // on crée une ligne dans substance_pt_eval_substance_pt
+                // on crée une ligne dans substance_pt_eval_susar_eu
+            }
 
-            console.log ('idSusarEu', SusarEu.id);
-            console.log('TabIdSubstancePt_eval_a_creer', TabIdSubstancePt_eval_a_creer);
-            console.log('tableau identique',estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer))
+            //      1. on crée une ligne dans la table substance_pt_eval : 
+            //                          - assessment outcome : screened without action
+            //                          - comments : Screened without action automatic ()
+            //                          - date_eval : date d'aujourd'hui
+            //      2. on crée une ligne dans substance_pt_eval_substance_pt
+            //      3. on crée une ligne dans substance_pt_eval_susar_eu
 
 
+            if (estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer)) {
+                // tableau identique - on fait le traitement prévu. Pour chaque TabIdSubstancePt_eval_a_creer :
+                // on modifie la ligne susar_eu : date_evaluation : now
+                updateDateEvalSusarEu(connectionSusarEuV2, SusarEu.id, new Date());
+            } else {
+                // tableau différent :
+                //     1. On cherche dans toutes les eval de ce susar, la date (created_at) la plus ancienne : premiereDateEval
+                const premiereDateEval = await donnePremiereDateEval(connectionSusarEuV2, SusarEu.id);
+                //     2. On met à jour susar_eu.date_evaluation : premiereDateEval
+                //     3. on met à jour la table substance_pt_eval_susar_eu : substance_pt_eval_id : id de la substance_pt_eval créée
+                updateDateEvalSusarEu(connectionSusarEuV2, SusarEu.id, premiereDateEval);
+            }
+            // console.log ('idSusarEu', SusarEu.id);
+            logger.info(`idSusarEu ${SusarEu.id}, tableau identique ${estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer)}`);
+            // console.log('TabIdSubstancePt_eval_a_creer', TabIdSubstancePt_eval_a_creer);
+            logger.info(`TabIdSubstancePt_eval_a_creer ${TabIdSubstancePt_eval_a_creer}`);
+            // console.log('tableau identique',estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer))
 
             // si on a estCeTabIdentique a false c'est qu'il y a bien au moins une eval, mais que la date d'eval, n'est pas renseignée dans la table susar_eu, 
             // il faut donc récupérer la date la plus ancienne dans la table substance_pt_eval_susar_eu et la mettre dans la table susar_eu.dateeval
@@ -127,7 +171,7 @@ async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
         logger.info(`Aucune substance trouvée pour le susar ${idSusar} avec substance ${medic.substancename} et MedDRA PT ${EI.reaction_list_pt}, on va le créer`);
 
         // Créer la substance_pt et retourner son id
-        const newSubstanceId = await createSubstancePt(connectionSusarEuV2, medic.substancename, EI.codereactionmeddrapt, EI.reaction_list_pt);
+        const newSubstanceId = await createSubstancePt(connectionSusarEuV2, medic.substancename, EI.codereactionmeddrapt, EI.reaction_list_pt, idSusar);
         
         if (newSubstanceId === null) {
             return null;
@@ -138,7 +182,7 @@ async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
 
         await createSubstancePtSusarEu(connectionSusarEuV2, newSubstanceId, idSusar);
 
-        return newSubstanceId;
+        return newSubstanceId ?? null;
     }
     // On parcours les resultats pour filtrer par substanceName et codeMeddraPt
     const filteredRows = rows.filter(row => 
@@ -152,14 +196,15 @@ async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
         logger.warn(`Plusieurs substances trouvées pour le susar ${idSusar} avec substance ${medic.substancename} et MedDRA PT ${EI.reaction_list_pt}`);
         return null;
     }
-    return filteredRows[0].id; // Retourne l'id de la substance trouvée
+    return filteredRows[0] ? filteredRows[0].id : null;
 }
 
 async function createSubstancePt(
     connectionSusarEuV2: PoolConnection,
     substanceName: string,
     codeMeddraPt: number,
-    reactionMeddraPt: string
+    reactionMeddraPt: string,
+    idSusar: number
 ): Promise<number> {
     try {
         const query: string = `INSERT INTO substance_pt (
@@ -178,7 +223,7 @@ async function createSubstancePt(
         const substance_pt_id = result.insertId;
         return substance_pt_id; // Retourne l'id de la nouvelle substance_pt créée
     } catch (error) {
-        logger.error({ error }, `Erreur lors de l'insertion dans substance_pt, pour la substance ${substanceName} et le PT ${reactionMeddraPt}`);
+        logger.error({ error }, `Erreur lors de l'insertion dans substance_pt, pour la substance ${substanceName} et le PT ${reactionMeddraPt} (idsusar: ${idSusar})`);
         throw error;
     }
 }
@@ -199,7 +244,7 @@ async function createSubstancePtSusarEu(
             idSusar,
         ]);
     } catch (error) {
-        logger.error({ error }, `Erreur lors de l'insertion dans substance_pt_susar_eu, pour l'id_substance_pt ${substance_pt_id} et l' idsusar ${idSusar}`);
+        logger.error({ error }, `Erreur lors de l'insertion dans substance_pt_susar_eu, pour l'id_substance_pt ${substance_pt_id} et l'idsusar ${idSusar}`);
         throw error;
     }
 }
@@ -239,11 +284,103 @@ function estCeTabIdentique(TabIdSubstancePt: number[], TabIdSubstancePt_eval_a_c
   return sortedA.every((val, idx) => val === sortedB[idx]);
 }
 
+async function donnePremiereDateEval(
+    connectionSusarEuV2: PoolConnection,
+    idSusarEu: number): Promise<Date> {
+    const query: string = `SELECT MIN(s2.created_at) AS premiere_date_eval
+                            FROM substance_pt_eval_susar_eu s 
+                            INNER JOIN substance_pt_eval s2 ON s2.id = s.substance_pt_eval_id
+                            WHERE s.susar_eu_id = ?`;
+    const [rows] = await connectionSusarEuV2.query<SubstancePtEvalRow[]>(query, [idSusarEu]);
+    return rows[0].premiere_date_eval;
+}
+
+
+
+
+async function createSubstancePtEval_et_TbLiaisons (
+    connectionSusarEuV2: PoolConnection,
+    idSubstancePt: number,
+    idSusar: number
+): Promise<void> {
+    await connectionSusarEuV2.beginTransaction();
+    try {
+        const formattedDate = new Date().toISOString().slice(0, 10); // AAAA-MM-JJ
+        const query_1: string = `INSERT INTO substance_pt_eval (
+            assessment_outcome,
+            comments,
+            date_eval,
+            user_create,
+            user_modif,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())`;
+        const [result_1] = await connectionSusarEuV2.query<ResultSetHeader>(query_1, [
+            'Assessed without action',
+            'Assessed without action automatic',
+            formattedDate,
+            process.env.USER_CREATE_EVAL || 'AWA_automatic',
+            process.env.USER_CREATE_EVAL || 'AWA_automatic'
+        ]); 
+
+        const idSubstancePtEval = result_1.insertId;
+
+        const query_2: string = `INSERT INTO substance_pt_eval_substance_pt (
+            substance_pt_eval_id,
+            substance_pt_id
+            ) VALUES (?, ?)`;
+        await connectionSusarEuV2.query<ResultSetHeader>(query_2, [
+            idSubstancePtEval,
+            idSubstancePt
+        ]); 
+        
+
+        const query_3: string = `INSERT INTO substance_pt_eval_susar_eu (
+            substance_pt_eval_id,
+            susar_eu_id
+            ) VALUES (?, ?)`;
+        await connectionSusarEuV2.query<ResultSetHeader>(query_3, [
+            idSubstancePtEval,
+            idSusar
+        ]); 
+        
+        await connectionSusarEuV2.commit();
+    } catch (error) {
+        await connectionSusarEuV2.rollback();
+        throw new Error('Erreur lors de la création de substance_pt_eval et des liaisons : ' + (error as Error).message);
+    }
+}
+
+
+
+
+
+async function updateDateEvalSusarEu(
+    connectionSusarEuV2: PoolConnection,
+    idSusarEu: number,
+    dateEval: Date
+): Promise<void> {
+    try {
+        const query: string = `UPDATE susar_eu SET date_evaluation = ? WHERE id = ?`;
+        await connectionSusarEuV2.query<ResultSetHeader>(query, [dateEval, idSusarEu]);
+    } catch (error) {
+        logger.error({ error }, `Erreur lors de la mise à jour de la date d'évaluation du susar ${idSusarEu}`);
+        throw error;
+    }
+}
+
+
 
 export {
     trtLotSusarEu,
     createSubstancePt,
     donneIdSubstancePtEval_a_creer,
     estCeTabIdentique,
+    donnePremiereDateEval,
+    // createSubstancePtEval,
+    // createSubstancePtEvalSubstancePt,
+    // createSubstancePtEvalSusarEu,
+    createSubstancePtEval_et_TbLiaisons,
+
 }
 //     logger.info('SWA automatique : Fin traitement');

@@ -1,12 +1,18 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createSubstancePt } from '../src/db/query.js';
-import { runInTransaction, closeTestPool } from '../src/db/testDb.js';
+import { runInTransaction, closeTestPool, getTestConnection } from '../src/db/testDb.js';
 import type { PoolConnection } from 'mysql2/promise';
 
+beforeAll(async () => {
+  // Initialise explicitement la connexion à la BDD de test
+  await getTestConnection();
+});
+
+afterAll(async () => {
+  await closeTestPool();
+});
+
 describe('createSubstancePt - Integration Test', () => {
-  afterAll(async () => {
-    await closeTestPool();
-  });
 
   it('insère vraiment une substance_pt et retourne son id', async () => {
     const result = await runInTransaction(async (connection: PoolConnection) => {

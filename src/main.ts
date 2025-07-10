@@ -73,6 +73,10 @@ const main = async (): Promise<void> => {
                                 OFFSET ${offset}`;
         const [rows] = await connectionSusarEuV2.query<SusarEuRow[]>(query);
 
+        //  * Pour DEV : Pour éviter de traiter plus d'un lot à la fois
+        if(offset > 10) {
+          hasMore = false;
+        }
 
         // console.log(rows.length);
         // process.exit(0);
@@ -80,11 +84,9 @@ const main = async (): Promise<void> => {
             hasMore = false;
             break;
         }
-//  * Pour DEV : Pour éviter de traiter plus d'un lot à la fois
-        hasMore = false; // pour DEV : Pour éviter de traiter plus d'un lot à la fois
         
         // Traiter le bloc de résultats ici
-        logger.info(`Traitement du bloc de ${offset} à ${offset + rows.length}`);
+        // logger.info(`Traitement du bloc de ${offset} à ${offset + rows.length}`);
         // console.log(`Traitement du bloc de ${offset} à ${offset + rows.length}`);
         // Ajoutez ici votre logique de traitement pour chaque bloc
         promises_trtLotSusarEu.push(trtLotSusarEu(connectionSusarEuV2, rows));
