@@ -19,7 +19,7 @@ import dotenv from 'dotenv';
 
 // types ts personnalisé
 import type { SusarEuRow } from './types/susar_eu_row.js';
-import type { PoolConnection, Pool } from 'mysql2/promise';
+import type { PoolConnection, Pool, RowDataPacket } from 'mysql2/promise';
 
 // const currentDir = __dirname;
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -55,35 +55,32 @@ const main = async (): Promise<void> => {
   const connectionSusarEuV2: PoolConnection = await poolSusarEuV2.getConnection();
   const nbJoursSeuil:string = process.env.NB_JOURS_SEUIL_DATE_IMPORT
   const batchSize: number = Number(process.env.NB_SUSAR_A_TRAITER_PAR_LOT);
-  let offset: number = 0;
-  let hasMore: boolean = true;
   const promises_trtLotSusarEu: Promise<void>[] = [];
 
-    while (hasMore) {
-        const query: string = `SELECT * 
-                                FROM susar_eu se 
-                                WHERE se.date_evaluation is null
-                                  AND se.created_at <= DATE_SUB(CURDATE(), INTERVAL ${nbJoursSeuil} DAY)
-                                ORDER BY se.created_at 
-                                LIMIT ${batchSize} 
-                                OFFSET ${offset}`;
-        const [rows] = await connectionSusarEuV2.query<SusarEuRow[]>(query);
+  // 1. Récupérer tous les IDs à traiter
+  const [idRows] = await connectionSusarEuV2.query<RowDataPacket[]>(
+    `SELECT id FROM susar_eu se 
+      WHERE se.date_evaluation IS NULL
+        AND se.created_at <= DATE_SUB(CURDATE(), INTERVAL ${nbJoursSeuil} DAY)
+      ORDER BY se.created_at`
+  );
+  const allIds = idRows.map((row: any) => row.id);
 
-        //  * Pour DEV : Pour tester sur une petite partie des données
-        // if(offset > 10) {
-        //   hasMore = false;
-        // }
+  // 2. Itérer sur le tableau d'IDs par lots
+  for (let i = 0; i < allIds.length; i += batchSize) {
 
-        // console.log(rows.length);
-        // process.exit(0);
-        if (rows.length === 0) {
-            hasMore = false;
-            break;
-        }
-        
-        promises_trtLotSusarEu.push(trtLotSusarEu(connectionSusarEuV2, rows));
-        offset += batchSize;
-    }
+    // 3. Créer la chaîne d'IDs pour la requête IN
+    const batchIds = allIds.slice(i, i + batchSize);
+    if (batchIds.length === 0) continue;
+    const idsString = batchIds.join(",");
+
+    // 4. Faire la requête pour récupérer les lignes du lot
+    const query = `SELECT * FROM susar_eu se WHERE se.id IN (${idsString})`;
+    const [rows] = await connectionSusarEuV2.query<SusarEuRow[]>(query);
+
+    // 5. Appeler le traitement sur le lot
+    promises_trtLotSusarEu.push(trtLotSusarEu(connectionSusarEuV2, rows));
+  }
 
   await Promise.all(promises_trtLotSusarEu);
 
