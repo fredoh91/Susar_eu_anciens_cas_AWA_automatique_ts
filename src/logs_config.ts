@@ -20,7 +20,7 @@ function getNextRotationDate(currentDate) {
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const logDirectory = path.resolve(currentDir, '../logs');
 // const logDirectory = '../logs';
-const prefixFichierLog = "SUSAR_anciens_cas_AWA_automatique"
+const prefixFichierLog = "SUSAR_anciens_cas_SWA_automatique"
 
 // Créez le répertoire s'il n'existe pas
 if (!fs.existsSync(logDirectory)) {

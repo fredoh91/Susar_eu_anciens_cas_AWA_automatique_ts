@@ -13,53 +13,52 @@ import type { SubstancePtRow } from '../types/substance_pt_row.js';
 import type { SubstancePtEvalRow } from '../types/substance_pt_eval_row.js';
 import type { PoolConnection, Pool } from 'mysql2/promise';
 import type { ResultSetHeader } from 'mysql2/promise';
-
+/**
+ * Traitement de chaque susar.
+ * Pour chaque susar, on va chercher les medicaments suspects et les PT.
+ * On va ensuite rechercher ou créer les substance_pt et les substance_pt_eval.
+ * On va ensuite mettre à jour la date d'évaluation du susar.
+ * @param connectionSusarEuV2 
+ * @param lstSusarEu 
+ */
 async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: SusarEuRow[]): Promise<void> {
     if (lstSusarEu.length !== 0) {
 
         for (const SusarEu of lstSusarEu) {
-            // logger.info(`Traitement du cas : ${SusarEu.id}`);
-            // TODO : Traiter le cas ici
-            // await traiterCas(SusarEu);
+            logger.info(`Traitement du susar : ${SusarEu.id}`);
 
             // on va chercher les medicament suspect de ce susar
             const medicamentSuspect: MedicamentsRow[] = await donneMedics(connectionSusarEuV2, SusarEu.id);
             if (medicamentSuspect.length === 0) {   
                 logger.info(`Aucun medicament suspect pour le cas : ${SusarEu.id}`);
-                continue; // on passe au susar suivant
+                continue;
             }
             // on va chercher les PT de ce susar
             const effetsIndesirables: EffetsIndesirablesRow[] = await donneEIs(connectionSusarEuV2, SusarEu.id);
             if (effetsIndesirables.length === 0) {
                 logger.info(`Aucun effet indésirable pour le cas : ${SusarEu.id}`);
-                continue; // on passe au susar suivant
+                continue;
             }
             // on fait une double boucle for of medicamentSuspect et PT
             let TabIdSubstancePt: number[] = [];
             for (const medicament of medicamentSuspect) {
                 for (const effet of effetsIndesirables) {
                     if (!medicament.substancename || !effet.reaction_list_pt) {
-                        //medic.substancename, EI.codereactionmeddrapt, EI.reaction_list_pt
                         // medicament ou effet sont null ou vide
                         logger.error( `medicament ou EI est null ou vide pour l'idsusar ${SusarEu.id} (medic: ${medicament.substancename} et EI: ${effet.codereactionmeddrapt} - ${effet.reaction_list_pt})`);
-        
                         continue;
-                    }
-                    const idSubstancePt = await donneSubstancePt(connectionSusarEuV2, SusarEu.id, medicament, effet);
-                    if (idSubstancePt !== null) {
-                        TabIdSubstancePt.push(idSubstancePt);
                     }
                     // pour chacun des couples, on regarde si il y a un enregistrement dans la table substance_pt
                     //      si oui, on recupère l'id de cette ligne substance_pt
                     //      si non, on crée la ligne et on recupère l'id de cette ligne substance_pt. 
                     //              on crée également les lignes dans la table de liaison "substance_pt_susar_eu" .
                     //              Normalement cela ne doit pas arriver
+                    const idSubstancePt = await donneSubstancePt(connectionSusarEuV2, SusarEu.id, medicament, effet);
+                    if (idSubstancePt !== null) {
+                        TabIdSubstancePt.push(idSubstancePt);
+                    }
                 }
             }
-
-            // console.log('SusarEu.id', SusarEu.id);  //  ex. 4
-            // console.log(TabIdSubstancePt);     //  ex. [ 9, 10 ]
-            // process.exit(0);
 
             const TabIdSubstancePt_eval_a_creer: number[] = await donneIdSubstancePtEval_a_creer(
                                                                                         connectionSusarEuV2, 
@@ -67,33 +66,23 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
                                                                                         TabIdSubstancePt);
 
             for (const idSubstancePt of TabIdSubstancePt_eval_a_creer) {
-                // on crée une ligne dans la table substance_pt_eval
                 const idSubstancePtEval = await createSubstancePtEval_et_TbLiaisons(connectionSusarEuV2, idSubstancePt, SusarEu.id);
-                // on crée une ligne dans substance_pt_eval_substance_pt
-                // const substancePtEvalSubstancePt = await createSubstancePtEvalSubstancePt(connectionSusarEuV2, idSubstancePtEval, idSubstancePt);
-                // // on crée une ligne dans substance_pt_eval_susar_eu
-                // const substancePtEvalSusarEu = await createSubstancePtEvalSusarEu(connectionSusarEuV2, idSubstancePtEval, SusarEu.id);
-                // on crée une ligne dans la table substance_pt_eval : 
+                
+                //      1. on crée une ligne dans la table substance_pt_eval : 
                 //                          - assessment outcome : screened without action
                 //                          - comments : Screened without action automatic ()
                 //                          - date_eval : date d'aujourd'hui
-                // on crée une ligne dans substance_pt_eval_substance_pt
-                // on crée une ligne dans substance_pt_eval_susar_eu
+                //      2. on crée une ligne dans substance_pt_eval_substance_pt
+                //      3. on crée une ligne dans substance_pt_eval_susar_eu
             }
-
-            //      1. on crée une ligne dans la table substance_pt_eval : 
-            //                          - assessment outcome : screened without action
-            //                          - comments : Screened without action automatic ()
-            //                          - date_eval : date d'aujourd'hui
-            //      2. on crée une ligne dans substance_pt_eval_substance_pt
-            //      3. on crée une ligne dans substance_pt_eval_susar_eu
-
 
             if (estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer)) {
                 // tableau identique - on fait le traitement prévu. Pour chaque TabIdSubstancePt_eval_a_creer :
                 // on modifie la ligne susar_eu : date_evaluation : now
                 updateDateEvalSusarEu(connectionSusarEuV2, SusarEu.id, new Date());
             } else {
+                // si on a estCeTabIdentique a false c'est qu'il y a bien au moins une eval, mais que la date d'eval, n'est pas renseignée dans la table susar_eu, 
+                // il faut donc récupérer la date la plus ancienne dans la table substance_pt_eval_susar_eu et la mettre dans la table susar_eu.dateeval
                 // tableau différent :
                 //     1. On cherche dans toutes les eval de ce susar, la date (created_at) la plus ancienne : premiereDateEval
                 const premiereDateEval = await donnePremiereDateEval(connectionSusarEuV2, SusarEu.id);
@@ -102,33 +91,21 @@ async function trtLotSusarEu(connectionSusarEuV2: PoolConnection, lstSusarEu: Su
                 updateDateEvalSusarEu(connectionSusarEuV2, SusarEu.id, premiereDateEval);
             }
             // console.log ('idSusarEu', SusarEu.id);
-            logger.info(`idSusarEu ${SusarEu.id}, tableau identique ${estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer)}`);
+            // logger.info(`idSusarEu ${SusarEu.id}, tableau identique ${estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer)}`);
             // console.log('TabIdSubstancePt_eval_a_creer', TabIdSubstancePt_eval_a_creer);
-            logger.info(`TabIdSubstancePt_eval_a_creer ${TabIdSubstancePt_eval_a_creer}`);
+            // logger.info(`TabIdSubstancePt_eval_a_creer ${TabIdSubstancePt_eval_a_creer}`);
             // console.log('tableau identique',estCeTabIdentique(TabIdSubstancePt, TabIdSubstancePt_eval_a_creer))
-
-            // si on a estCeTabIdentique a false c'est qu'il y a bien au moins une eval, mais que la date d'eval, n'est pas renseignée dans la table susar_eu, 
-            // il faut donc récupérer la date la plus ancienne dans la table substance_pt_eval_susar_eu et la mettre dans la table susar_eu.dateeval
-
-            // sinon il faut crée toutes les éval comme décrit plus bas
-
-
-            // process.exit(0);    
-            //      on vérifie qu'il n'y a aucun substance_pt_eval pour tous les couples medicamentSuspect et PT
-            //      On parcours substance_pt_eval_susar_eu INNER JOIN substance_pt_eval 
-            //           Pour chaque substance_pt_eval, on vérifie si il y a une ligne dans substance_pt_eval_substance_pt
-            //      si il y a des évaluations, on log et on ne traite pas ce susar
-            //      si il n'y a pas d'évaluation : 
-            //              on crée la ligne dans la table substance_pt_eval : 
-            //                          - assessment outcome : screened without action
-            //                          - comments : Screened without action automatic ()
-            //                          - date_eval : date d'aujourd'hui
-            //              on modifie la ligne susar_eu : date_evaluation : now
-
         }
     }
 }
 
+/**
+ * Retourne les medicaments suspects/interaction pour un susar.
+ * Sera utilisé pour la création d'évaluations.
+ * @param connectionSusarEuV2 
+ * @param idSusar 
+ * @returns {MedicamentsRow[]} - Tableau de medicaments suspects/interaction pour un susar
+ */
 async function donneMedics(connectionSusarEuV2: PoolConnection,idSusar: number): Promise<MedicamentsRow[]> {
     const query: string = `SELECT * FROM medicaments m WHERE (m.productcharacterization ='Suspect' or m.productcharacterization ='Interacting')
                             and m.susar_id = ?`;
@@ -142,6 +119,13 @@ async function donneMedics(connectionSusarEuV2: PoolConnection,idSusar: number):
     return rows;
 }
 
+/**
+ * Retourne les effets indésirables pour un susar.
+ * Sera utilisé pour la création d'évaluations.
+ * @param connectionSusarEuV2 
+ * @param idSusar 
+ * @returns {EffetsIndesirablesRow[]} - Tableau d'effets indésirables pour un susar
+ */
 async function donneEIs(connectionSusarEuV2: PoolConnection,idSusar: number): Promise<EffetsIndesirablesRow[]> {
     const query: string = `SELECT * FROM effets_indesirables ei where ei.susar_id = ?`;
 
@@ -154,6 +138,19 @@ async function donneEIs(connectionSusarEuV2: PoolConnection,idSusar: number): Pr
     return rows;
 }
 
+/**
+ * Cette fonction permet de vérifier si il existe bien une ligne dans la table substance_pt.
+ * Si c'est le cas, on retourne l'id de la substance_pt.
+ * Si non :
+ *      on crée la substance_pt, grace a createSubstancePt().
+ *      on crée la ligne dans la table de liaison "substance_pt_susar_eu", grace a createSubstancePtSusarEu().
+ *      on retourne l'id de la substance_pt.
+ * @param connectionSusarEuV2 
+ * @param idSusar 
+ * @param medic 
+ * @param EI 
+ * @returns {number|null} - L'id de la substance_pt ou null si erreur
+ */
 async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
                                 idSusar: number,
                                 medic: MedicamentsRow,
@@ -179,7 +176,6 @@ async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
         // on crée la ligne dans la table de liaison "substance_pt_susar_eu" .
         const query: string = `INSERT INTO substance_pt_susar_eu (substance_pt_id, susar_eu_id) VALUES (?, ?)`;
 
-
         await createSubstancePtSusarEu(connectionSusarEuV2, newSubstanceId, idSusar);
 
         return newSubstanceId ?? null;
@@ -199,6 +195,15 @@ async function donneSubstancePt(connectionSusarEuV2: PoolConnection,
     return filteredRows[0] ? filteredRows[0].id : null;
 }
 
+/**
+ * Création d'une ligne dans la table substance_pt.
+ * @param connectionSusarEuV2 
+ * @param substanceName 
+ * @param codeMeddraPt 
+ * @param reactionMeddraPt 
+ * @param idSusar 
+ * @returns {number} - L'id de la substance_pt créée
+ */
 async function createSubstancePt(
     connectionSusarEuV2: PoolConnection,
     substanceName: string,
@@ -228,6 +233,13 @@ async function createSubstancePt(
     }
 }
 
+/**
+ * Création d'une ligne dans la table substance_pt_susar_eu.
+ * Et donc de la liaison entre la substance_pt et le susar_eu.
+ * @param connectionSusarEuV2 
+ * @param substance_pt_id 
+ * @param idSusar 
+ */
 async function createSubstancePtSusarEu(
     connectionSusarEuV2: PoolConnection,
     substance_pt_id: number,
@@ -249,12 +261,19 @@ async function createSubstancePtSusarEu(
     }
 }
 
+/**
+ * Retourne les id des substance_pt_eval à creer pour un susar.
+ * Sera utilisé pour la création d'évaluations.
+ * @param connectionSusarEuV2 
+ * @param idSusarEu 
+ * @param TabIdSubstancePt 
+ * @returns {number[]} - Tableau des id des substance_pt_eval à creer pour un susar 
+ */
 async function donneIdSubstancePtEval_a_creer(
     connectionSusarEuV2: PoolConnection, 
     idSusarEu: number, 
     TabIdSubstancePt: number[]
 ): Promise<number[]> {
-
 
 let TabIdSubstancePtEval: number[] = [];
 for (const idSubstancePt of TabIdSubstancePt) {
@@ -276,7 +295,15 @@ for (const idSubstancePt of TabIdSubstancePt) {
     return TabIdSubstancePtEval;
 }
 
-
+/**
+ * Vérifie si les tableaux sont identiques.
+ * Sera utilisé pour vérifier si le tableau des eval à creer pour un susar et le tableau des substance_pt lié a un susar sont identiques.
+ *      - Si oui : on devra mettre à jour la date d'évaluation du susar à partir d'une eval existante
+ *      - Si non : on mettra à jour la date d'évaluation du susar à la date du jour (puisque les évalations seront crées aujourd'hui).
+ * @param TabIdSubstancePt 
+ * @param TabIdSubstancePt_eval_a_creer 
+ * @returns 
+ */
 function estCeTabIdentique(TabIdSubstancePt: number[], TabIdSubstancePt_eval_a_creer: number[]): boolean {
   if (TabIdSubstancePt.length !== TabIdSubstancePt_eval_a_creer.length) return false;
   const sortedA = [...TabIdSubstancePt].sort((a, b) => a - b);
@@ -284,6 +311,13 @@ function estCeTabIdentique(TabIdSubstancePt: number[], TabIdSubstancePt_eval_a_c
   return sortedA.every((val, idx) => val === sortedB[idx]);
 }
 
+/**
+ * Retourne la date d'évaluation la plus ancienne pour un susar.
+ * Sera utilisé pour la mise à jour de la date d'évaluation du susar si elle n'est pas renseignée (a cause d'un bug ?).
+ * @param connectionSusarEuV2 
+ * @param idSusarEu 
+ * @returns {Date} - La date d'évaluation la plus ancienne pour un susar
+ */
 async function donnePremiereDateEval(
     connectionSusarEuV2: PoolConnection,
     idSusarEu: number): Promise<Date> {
@@ -316,11 +350,11 @@ async function createSubstancePtEval_et_TbLiaisons (
             updated_at
         ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())`;
         const [result_1] = await connectionSusarEuV2.query<ResultSetHeader>(query_1, [
-            'Assessed without action',
-            'Assessed without action automatic',
+            'Screened without action',
+            'Screened without action automatic',
             formattedDate,
-            process.env.USER_CREATE_EVAL || 'AWA_automatic',
-            process.env.USER_CREATE_EVAL || 'AWA_automatic'
+            process.env.USER_CREATE_EVAL || 'SWA_automatic',
+            process.env.USER_CREATE_EVAL || 'SWA_automatic'
         ]); 
 
         const idSubstancePtEval = result_1.insertId;
@@ -354,7 +388,12 @@ async function createSubstancePtEval_et_TbLiaisons (
 
 
 
-
+/**
+ * Mise à jour de la date d'évaluation du susar dans la table susar_eu.
+ * @param connectionSusarEuV2 
+ * @param idSusarEu 
+ * @param dateEval 
+ */
 async function updateDateEvalSusarEu(
     connectionSusarEuV2: PoolConnection,
     idSusarEu: number,
@@ -377,10 +416,6 @@ export {
     donneIdSubstancePtEval_a_creer,
     estCeTabIdentique,
     donnePremiereDateEval,
-    // createSubstancePtEval,
-    // createSubstancePtEvalSubstancePt,
-    // createSubstancePtEvalSusarEu,
     createSubstancePtEval_et_TbLiaisons,
 
 }
-//     logger.info('SWA automatique : Fin traitement');
